@@ -90,3 +90,15 @@ def run_action(entry_id: int, payload: ActionPayload) -> ActionResult:
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
+
+
+@router.get("/{entry_id}/type_check", response_model=ActionResult)
+def type_check(entry_id: int) -> ActionResult:
+    """跨模块核对映射类型与结构定义类型；旧简写与新类型经归一化后兼容即通过。"""
+    result = service.check_type_against_schema(entry_id)
+    if result is None:
+        return ActionResult(ok=False, message=f"映射规则 {entry_id} 不存在或已归档")
+    return ActionResult(ok=bool(result.get("全部一致")),
+                        message="字段类型与结构定义一致" if result.get("全部一致")
+                        else "存在字段类型不一致或结构定义缺失，请核对结构定义版本表",
+                        entry=result)

@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from app.store import store
+from app.type_catalog import canonical_type, split_type_list, types_compatible
 
 MODULE = "table_compare"
 REQUIRED_FIELDS = ["任务编号", "左表名称", "右表名称"]
@@ -91,6 +92,8 @@ class TableCompareService:
         only_left = left_keys - right_keys
         only_right = right_keys - left_keys
         diff_count = len(only_left) + len(only_right)
+        # 结构级类型比对同步产出，类型比较走归一化，兼容旧简写与新类型混写
+        schema_check = self.compare_schema_types(left, right)
         return {
             "left_count": len(left_rows),
             "right_count": len(right_rows),
@@ -98,6 +101,7 @@ class TableCompareService:
             "only_left": list(only_left)[:10],
             "only_right": list(only_right)[:10],
             "key_field": key_field,
+            "schema_type_check": schema_check,
         }
 
     def _trigger_backfill(self, entry: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
@@ -115,3 +119,40 @@ class TableCompareService:
             "失败区间": "",
         })
         return {"ok": True, "job_no": job_no}
+
+    def compare_schema_types(self, left_table: str, right_table: str) -> dict[str, Any]:
+        """结构级类型比对：两侧字段类型先经 type_catalog 归一化再比较。
+
+        旧 STRING 与新 VARCHAR 归一化后同族视为兼容，避免结构表保留简写、
+        字段映射已切新类型时持续误报。
+        """
+        def schema_index(table_name: str) -> dict[str, str]:
+            index: dict[str, str] = {}
+            for definition in store.find_all_by_field("schema_registry", "表名称", table_name):
+                fields = split_type_list(definition.get("字段名称"))
+                raw_types = split_type_list(definition.get("字段类型"))
+                for i, field in enumerate(fields):
+                    index[field] = raw_types[i] if i < len(raw_types) else ""
+            return index
+
+        left_index = schema_index(left_table)
+        right_index = schema_index(right_table)
+        checks = []
+        for field in sorted(set(left_index) | set(right_index)):
+            left_raw = left_index.get(field, "")
+            right_raw = right_index.get(field, "")
+            checks.append({
+                "字段名称": field,
+                "左表写法": left_raw,
+                "右表写法": right_raw,
+                "左表规范类型": canonical_type(left_raw),
+                "右表规范类型": canonical_type(right_raw),
+                "类型一致": types_compatible(left_raw, right_raw)
+                if left_raw and right_raw else False,
+            })
+        return {
+            "左表名称": left_table,
+            "右表名称": right_table,
+            "全部一致": all(item["类型一致"] for item in checks) if checks else False,
+            "字段核对": checks,
+        }

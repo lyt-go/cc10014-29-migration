@@ -7,6 +7,7 @@
       </div>
       <div class="page-actions">
         <button class="btn primary" data-testid="open-create" type="button" @click="openCreate">登记结构定义</button>
+        <RouterLink class="btn" data-testid="goto-version-table" to="/schema_version">结构定义版本表详情</RouterLink>
         <button class="btn" data-testid="export" type="button" @click="exportRows">导出结构注册清单</button>
       </div>
     </header>
@@ -31,12 +32,14 @@
       <thead>
         <tr>
           <th v-for="column in columns" :key="column">{{ column }}</th>
+          <th>规范字段类型（新类型版本）</th>
           <th>可执行动作</th>
         </tr>
       </thead>
       <tbody>
         <tr v-for="row in rows" :key="String(row.id)" :data-testid="`row-${row.id}`" :data-status="String(row.status)">
           <td v-for="column in columns" :key="column">{{ row[column] ?? '—' }}</td>
+          <td data-testid="canonical-cell">{{ row['规范字段类型'] ?? '—' }}</td>
           <td class="row-actions">
             <button
               v-for="action in actions"
@@ -51,7 +54,7 @@
           </td>
         </tr>
         <tr v-if="!rows.length">
-          <td :colspan="columns.length + 1" class="empty-state">暂无结构注册数据，可先登记结构定义</td>
+          <td :colspan="columns.length + 2" class="empty-state">暂无结构注册数据，可先登记结构定义</td>
         </tr>
       </tbody>
     </table>

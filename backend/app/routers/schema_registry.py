@@ -74,6 +74,24 @@ def get_entry(entry_id: int) -> dict:
     return entry
 
 
+@router.get("/table/{table_name}/types", response_model=dict)
+def table_field_types(table_name: str) -> dict:
+    """结构注册入口：逐字段查看旧写法与新规范类型的解析结果，供版本表详情页交叉核对。"""
+    return {"表名称": table_name, "items": service.describe_field_types(table_name)}
+
+
+@router.get("/mapping/{mapping_id}/type_check", response_model=ActionResult)
+def mapping_type_check(mapping_id: int) -> ActionResult:
+    """沿调用链核对字段映射与结构定义的字段类型（归一化比较，兼容旧类型别名）。"""
+    result = service.check_mapping_type_consistency(mapping_id)
+    if result is None:
+        return ActionResult(ok=False, message=f"映射规则 {mapping_id} 不存在或已归档")
+    return ActionResult(ok=bool(result.get("全部一致")),
+                        message="字段类型与结构定义一致" if result.get("全部一致")
+                        else "存在字段类型不一致或结构定义缺失",
+                        entry=result)
+
+
 @router.post("", response_model=ActionResult)
 def create_entry(payload: dict[str, object]) -> ActionResult:
     """登记一条结构定义，缺字段时说明原因而不是静默丢弃。"""

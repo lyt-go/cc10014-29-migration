@@ -48,6 +48,14 @@
             >
               {{ action }}
             </button>
+            <button
+              class="link"
+              type="button"
+              :data-testid="`type-check-${row.id}`"
+              @click="runTypeCheck(row)"
+            >
+              类型核对
+            </button>
           </td>
         </tr>
         <tr v-if="!rows.length">
@@ -72,6 +80,41 @@
       </form>
     </div>
 
+    <div v-if="typeCheckResult" class="modal-backdrop" data-testid="type-check-modal">
+      <div class="modal">
+        <h3>字段类型核对：{{ typeCheckResult.规则编号 }}</h3>
+        <p :class="typeCheckResult.全部一致 ? '' : 'error-text'">
+          {{ typeCheckResult.全部一致 ? '映射类型与结构定义归一化后一致（旧简写与新类型兼容）' : '存在不一致或结构定义缺失，请核对结构定义版本表' }}
+        </p>
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>字段名称</th>
+              <th>映射类型写法</th>
+              <th>结构定义写法</th>
+              <th>映射规范类型</th>
+              <th>结构定义规范类型</th>
+              <th>类型一致</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="item in typeCheckResult.字段核对" :key="item.字段名称">
+              <td>{{ item.字段名称 }}</td>
+              <td>{{ item.映射类型写法 || '—' }}</td>
+              <td>{{ item.结构定义写法 || '—' }}</td>
+              <td>{{ item.映射规范类型 }}</td>
+              <td>{{ item.结构定义规范类型 }}</td>
+              <td>{{ item.类型一致 ? '是' : '否' }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="page-actions">
+          <RouterLink class="btn" to="/schema_version">前往结构定义版本表</RouterLink>
+          <button class="btn primary" type="button" data-testid="type-check-close" @click="typeCheckResult = null">关闭</button>
+        </div>
+      </div>
+    </div>
+
     <footer class="page-foot">
       <span>共 {{ total }} 条字段映射记录</span>
       <span v-if="errorMessage" class="error-text">{{ errorMessage }}</span>
@@ -85,6 +128,20 @@ import { computed, onMounted, ref } from 'vue'
 import { request } from '@/api/client'
 
 type Row = Record<string, string | number | null>
+interface TypeCheckItem {
+  字段名称: string
+  映射类型写法: string
+  结构定义写法: string
+  映射规范类型: string
+  结构定义规范类型: string
+  类型一致: boolean
+}
+interface TypeCheckResult {
+  规则编号: string
+  表名称: string
+  全部一致: boolean
+  字段核对: TypeCheckItem[]
+}
 
 const ENDPOINT = '/api/column_mapping'
 const columns = ["规则编号", "源字段名", "目标字段名", "数据类型", "默认值", "转换函数", "规则版本", "生效日期"]
@@ -100,6 +157,7 @@ const filterFields = columns.slice(0, 3)
 const showCreate = ref(false)
 const creating = ref(false)
 const createValues = ref<Record<string, string>>({})
+const typeCheckResult = ref<TypeCheckResult | null>(null)
 const stats = computed(() => [
   { label: metricNames[0], value: total.value },
   { label: metricNames[1], value: rows.value.filter((row) => row.status === statuses[1]).length },
@@ -165,6 +223,18 @@ async function runAction(action: string, row: Row) {
     await reload()
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '字段映射操作失败'
+  }
+}
+
+async function runTypeCheck(row: Row) {
+  errorMessage.value = ''
+  try {
+    const response = await request(`${ENDPOINT}/${row.id}/type_check`)
+    const payload = await response.json()
+    if (!response.ok) throw new Error(payload.message || '类型核对失败')
+    typeCheckResult.value = payload.entry as TypeCheckResult
+  } catch (error) {
+    errorMessage.value = error instanceof Error ? error.message : '类型核对失败'
   }
 }
 
